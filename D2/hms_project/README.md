@@ -41,6 +41,6 @@ The demo uses known user passwords and fictional data only. Historical state gro
 8. Request a daily dispense report and download CSV. Stop/restart; records persist, and communication is reverified.
 9. Explain which module hides each policy. For an on-the-spot heartbeat timing change, identify config.py, Communication, the timing tests and affected traceability rows.
 
-These are prototype defaults: heartbeat interval 5 s; timeout 3 s; freshness 15 s; future timestamp allowance 2 s; simulator publication 3 s; dashboard polling 1 s. Timeout detection occurs on the next 0.25 s scheduler tick, so PER-01 has a bounded scheduling tolerance to agree with the instructor/ADC team.
+These are prototype defaults: heartbeat interval 5 s; timeout 3 s; freshness 15 s; future timestamp allowance 2 s; simulator publication 3 s; desktop refresh 1 s. Timeout detection occurs on the next 0.25 s scheduler tick, so PER-01 has a bounded scheduling tolerance to agree with the instructor/ADC team.
 
 D2 handout says show code live; submit the design document through the prescribed submission box. This package supports both preparation tasks and is not itself the finished design report.

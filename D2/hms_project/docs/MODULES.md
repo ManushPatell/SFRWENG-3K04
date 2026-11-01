@@ -9,15 +9,14 @@
 | Security, hms/security.py | Password derivation and role permission decisions | credential(), verify(), allowed() |
 | Storage, hms/storage.py | SQLite schema, snapshot serialization | load(), save() |
 | Application, hms/service.py | Serialized workflows, audit and accepted-event consistency | login(), receive(), action(), snapshot(), history(), reconstruct() |
-| Transport, hms/server.py | HTTP, cookies, JSON, CSV and TLS details | make_server(); documented device endpoints |
-| Presentation, hms/static/* | Browser layout, filtering and polling | HTTP application API |
+| Presentation, hms/desktop.py | Native PyQt5 operator interface, readable 1920x1080 layout, filtering and workflows | `HMSWindow`; `run_desktop()` |
 | Simulator, hms/simulator.py | Fictional cabinet behaviour and fault generation | tick(), control(), status() |
 
 Modules are design units, not a reimplementation of the D1 domain entities. Alarm states implement the D1 alarm state machine with acknowledgement separate from clearance. Communication implements unverified/available/error plus correct-response recovery. Inventory actions implement validation, location threshold checking, alarm generation and history recording.
 
 ## Current encapsulation limit
 
-The application owns the mutable state and passes internal references to its policy collaborators. This is deliberate internal composition, but server.py and simulator.py also currently access application state for device commands and the demo adapter. For a stronger information-hiding demonstration, extract public device polling/command-ack operations before expanding these adapters. The browser receives copied public views and never gets user password hashes or device credentials. Treat modularity as a working baseline, not a perfect rubric score.
+The application owns the mutable state and passes internal references to its policy collaborators. This is deliberate internal composition. The active demo has no network transport: the PyQt5 window calls the public HMS service, while the in-process simulator provides repeatable ADC behaviour. Treat modularity as a working prototype baseline, not a production deployment claim.
 
 ## Role matrix
 
@@ -27,7 +26,7 @@ All roles can view, acknowledge, report a discrepancy and report a fault. Admini
 
 - Monitored: actual cabinet stock, hardware/sensor/power condition, cabinet availability and operator intentions in the environment.
 - Inputs: timestamped ADC messages, heartbeat responses and authenticated operator requests received by HMS.
-- Outputs: dashboard/API/report values, alarms and queued supervisory configuration requests.
+- Outputs: dashboard/report values, alarms and queued supervisory configuration requests.
 - Controlled: information and alarm indications presented to operators; supervisory configuration delivered to cabinets. Physical dispensing/locks are outside this HMS boundary.
 - NAT: messages can be delayed, lost or repeated; the cabinet owns physical measurement and actuation; communication failure does not prove hardware failure. Simulator assumptions approximate these environmental constraints.
 - REQ: accurately expose accepted reports and their freshness, preserve unresolved alarms, prevent unverified supervisory dispatch and retain traceable history. Input/output accuracy depends on the stated environmental and adapter assumptions.
