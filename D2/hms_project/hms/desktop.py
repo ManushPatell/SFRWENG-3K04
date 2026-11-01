@@ -8,8 +8,10 @@ import csv
 import json
 from datetime import datetime
 
-from PyQt5.QtCore import QDateTime, QTimer
+from PyQt5.QtCore import QDateTime, QTimer, Qt
+from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -19,6 +21,7 @@ from PyQt5.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QGroupBox,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -28,7 +31,6 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QSpinBox,
     QDoubleSpinBox,
-    QStackedWidget,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -38,6 +40,125 @@ from PyQt5.QtWidgets import (
 
 DEMO_PASSWORD = "DemoOnly!2026"
 ROLE_NAMES = ("administrator", "pharmacist", "nurse", "technician")
+
+
+APPLICATION_STYLE = """
+QWidget {
+    font-family: "Segoe UI";
+    font-size: 11pt;
+}
+
+QMainWindow {
+    background: #dfe3e8;
+}
+
+QTabWidget::pane {
+    border: 1px solid #8f9aa6;
+    background: #eef1f4;
+}
+
+QTabBar::tab {
+    min-width: 150px;
+    min-height: 38px;
+    padding: 6px 18px;
+    font-size: 11pt;
+    color: #26323d;
+    background: #c8cfd6;
+    border: 1px solid #8f9aa6;
+    border-bottom: none;
+}
+
+QTabBar::tab:selected {
+    font-weight: 600;
+    color: #ffffff;
+    background: #526170;
+}
+
+QGroupBox {
+    margin-top: 18px;
+    padding: 18px 12px 12px 12px;
+    border: 1px solid #929da8;
+    border-radius: 5px;
+    background: #f1f3f5;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 6px;
+    font-size: 13pt;
+    font-weight: 600;
+    color: #202b35;
+    background: #f1f3f5;
+}
+
+QLabel {
+    color: #202b35;
+}
+
+QLineEdit,
+QComboBox,
+QSpinBox,
+QDoubleSpinBox,
+QDateTimeEdit {
+    min-height: 34px;
+    padding: 3px 8px;
+    color: #18212a;
+    background: #ffffff;
+    border: 1px solid #7f8b97;
+    border-radius: 3px;
+}
+
+QPushButton {
+    min-height: 36px;
+    padding: 4px 18px;
+    font-weight: 600;
+    color: #ffffff;
+    background: #526170;
+    border: 1px solid #3f4b57;
+    border-radius: 3px;
+}
+
+QPushButton:hover {
+    background: #3f4b57;
+}
+
+QPushButton:pressed {
+    background: #303b45;
+}
+
+QTableWidget {
+    min-height: 180px;
+    color: #18212a;
+    background: #ffffff;
+    alternate-background-color: #e9edf1;
+    gridline-color: #9ca7b1;
+    selection-background-color: #b6c6d5;
+    selection-color: #17202a;
+    border: 1px solid #7f8b97;
+}
+
+QHeaderView::section {
+    min-height: 34px;
+    padding: 5px 8px;
+    font-weight: 600;
+    color: #17212b;
+    background: #c7d0d8;
+    border: 1px solid #8e99a4;
+}
+
+QPlainTextEdit {
+    padding: 8px;
+    color: #18212a;
+    background: #ffffff;
+    border: 1px solid #7f8b97;
+}
+
+QStatusBar {
+    color: #17212b;
+    background: #c8cfd6;
+}
+"""
 
 
 def format_time(timestamp):
@@ -62,6 +183,7 @@ class LoginDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Hospital Monitoring System - Sign in")
         self.setModal(True)
+        self.setMinimumWidth(480)
 
         self.username = QComboBox()
         self.username.addItems(ROLE_NAMES)
@@ -84,6 +206,8 @@ class LoginDialog(QDialog):
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(16)
         layout.addWidget(QLabel("Select a role to explore its permitted operations."))
         layout.addLayout(form)
         layout.addWidget(note)
@@ -106,7 +230,13 @@ class HMSWindow(QMainWindow):
         self.current_state = None
 
         self.setWindowTitle("Hospital Monitoring System")
-        self.resize(1350, 850)
+        self.setMinimumSize(1280, 720)
+
+        # Keep the windowed presentation large on the 1920x1080 demo screen.
+        available = QApplication.primaryScreen().availableGeometry()
+        width = min(1728, available.width() - 80)
+        height = min(972, available.height() - 80)
+        self.resize(max(1280, width), max(720, height))
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
@@ -157,13 +287,14 @@ class HMSWindow(QMainWindow):
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setAlternatingRowColors(True)
+        table.setWordWrap(True)
+        table.setTextElideMode(Qt.ElideRight)
 
         for row_number, row in enumerate(rows):
             for column_number, value in enumerate(row):
                 table.setItem(row_number, column_number, item(value))
 
-        table.resizeColumnsToContents()
-        table.horizontalHeader().setStretchLastSection(True)
+        self.configure_table(table)
         return table
 
     def add_section(self, title, widget):
@@ -854,13 +985,33 @@ class HMSWindow(QMainWindow):
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setAlternatingRowColors(True)
+        table.setWordWrap(True)
+        table.setTextElideMode(Qt.ElideRight)
 
         for row_number, row in enumerate(rows):
             for column_number, value in enumerate(row):
                 table.setItem(row_number, column_number, item(value))
 
+        self.configure_table(table)
+
+    def configure_table(self, table):
+        """Apply consistent sizing rules that keep dense tables readable."""
+
+        table.setMinimumHeight(190)
+        table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        table.verticalHeader().setDefaultSectionSize(38)
         table.resizeColumnsToContents()
-        table.horizontalHeader().setStretchLastSection(True)
+
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setStretchLastSection(True)
+
+        # Prevent a long JSON/detail cell from consuming the whole screen.
+        for column in range(table.columnCount()):
+            width = table.columnWidth(column)
+            table.setColumnWidth(column, min(max(width, 120), 380))
+
+        table.resizeRowsToContents()
 
     def form_widget(self, form_layout):
         """Place a form layout inside a normal QWidget for use in sections."""
@@ -874,6 +1025,9 @@ def run_desktop(service, simulator=None):
     """Start the native interface and return Qt's exit code."""
 
     application = QApplication.instance() or QApplication([])
+    application.setStyle("Fusion")
+    application.setFont(QFont("Segoe UI", 11))
+    application.setStyleSheet(APPLICATION_STYLE)
     login = LoginDialog()
     if login.exec_() != QDialog.Accepted:
         return 0
