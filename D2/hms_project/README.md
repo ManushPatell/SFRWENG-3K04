@@ -1,18 +1,18 @@
 # Hospital Monitoring System — D2 code prototype
 
-Python 3.10 or newer. No pip packages, Node installation, cloud service, or database setup required. All medications and patients used in the simulator are fictional.
+Python 3.10 or newer. The desktop interface uses PyQt5. No cloud service or separate database setup is required. All medications and patients used in the simulator are fictional.
 
 ## Start
 
 Extract the ZIP, open a terminal in `hms_project`, then run:
 
-Windows: `py -3 run.py --open`
+Windows: `py -3 run.py`
 
-macOS/Linux: `python3 run.py --open`
+macOS/Linux: `python3 run.py`
 
-Open http://127.0.0.1:8765 if the browser does not open. Select administrator and use password `DemoOnly!2026`. The same demo password applies to pharmacist, nurse and technician. Stop with Ctrl+C. Records persist in `data/hms.sqlite3`; use `--database data/another-demo.sqlite3` for a separate clean demo. Do not delete an existing database unless its records are no longer wanted.
+The application opens as a native PyQt5 desktop window. Select administrator and use password `DemoOnly!2026`. The same demo password applies to pharmacist, nurse and technician. Close the window to stop. Records persist in `data/hms.sqlite3`; use `--database data/another-demo.sqlite3` for a separate clean demo. Do not delete an existing database unless its records are no longer wanted.
 
-Run tests: `python -m unittest discover -s tests -v` (Windows may use `py -3`).
+Install the interface dependency with `python -m pip install PyQt5`, then run tests with `python -m unittest discover -s tests -v` (Windows may use `py -3`).
 
 ## Included
 
@@ -20,14 +20,14 @@ Run tests: `python -m unittest discover -s tests -v` (Windows may use `py -3`).
 - Inventory, quantities, thresholds, alternate locations, discrepancy reports, dispense/restock history.
 - Alarm acknowledgement distinct from resolution, failures, stale data and security-denial alarms.
 - Cabinet health, maintenance, daily/weekly rolling reports, CSV export and inventory reconstruction.
-- Role restrictions, SQLite persistence, external HTTP/JSON device adapter, reproducible fault controls.
+- Role restrictions, SQLite persistence, in-process cabinet simulation, reproducible fault controls.
 - Module guide, five precise contracts, complete 88-row requirement coverage worksheet, demo walkthrough and tests.
 
 ## Important status
 
-This is a course prototype, not clinical software. It implements a draft ADC interface; the ADC sub-team must agree to its schema, timing and security before integration. A mathematical heartbeat checks responsiveness, not identity or security. Default HTTP is loopback-only and does **not** satisfy confidentiality requirement SEC-03. Optional `--cert certificate.pem --key private-key.pem` enables TLS with a certificate you provide. Per-device credentials, real identity management, hospital integrations, backup replication and production security are not implemented.
+This is a course prototype, not clinical software. It implements a local simulated ADC interface; the ADC sub-team must agree to its schema, timing and security before integration. A mathematical heartbeat checks responsiveness, not identity or security. Per-device credentials, real identity management, hospital integrations, backup replication and production security are not implemented.
 
-The demo uses shared device credentials and known user passwords. Use fictional data only. Historical state grows without a retention policy; performance at hospital scale is unverified. The tests cover core behaviour and HTTP integration; a full visual/keyboard browser acceptance pass is still required. See the coverage worksheet for other partial items. Do not present all requirements as verified complete.
+The demo uses known user passwords and fictional data only. Historical state grows without a retention policy; performance at hospital scale is unverified. The tests cover core behaviour; a full visual/keyboard desktop acceptance pass is still required. See the coverage worksheet for other partial items. Do not present all requirements as verified complete.
 
 ## Live demonstration
 
@@ -42,9 +42,5 @@ The demo uses shared device credentials and known user passwords. Use fictional 
 9. Explain which module hides each policy. For an on-the-spot heartbeat timing change, identify config.py, Communication, the timing tests and affected traceability rows.
 
 These are prototype defaults: heartbeat interval 5 s; timeout 3 s; freshness 15 s; future timestamp allowance 2 s; simulator publication 3 s; dashboard polling 1 s. Timeout detection occurs on the next 0.25 s scheduler tick, so PER-01 has a bounded scheduling tolerance to agree with the instructor/ADC team.
-
-## External ADC transport trial
-
-Run `python run.py --no-simulator`, then in another terminal in the same directory run `python tools/device_client.py`. This separate process authenticates, registers, answers challenges and publishes fictional inventory/health through HTTP. Ctrl+C on the client demonstrates a real transport timeout. The local helper reads the demo credential and last sequence from SQLite; a partner client should receive its credential securely and maintain sequence state. You can instead set `HMS_DEVICE_TOKEN` and `HMS_DEVICE_SEQUENCE`. See docs/INTERFACE.md.
 
 D2 handout says show code live; submit the design document through the prescribed submission box. This package supports both preparation tasks and is not itself the finished design report.
