@@ -93,32 +93,63 @@ class Screen:
         status = cabinet.status()
         session = status["session"]
 
-        parts = [self._topbar(status, session)]
+        top = [self._topbar(status, session)]
         if message:
-            parts.append('<div class="%s">%s</div>' %
-                         ("note" if ok else "note bad", _esc(message)))
-        parts.append(self._banner(status))
+            top.append('<div class="%s">%s</div>' %
+                       ("note" if ok else "note bad", _esc(message)))
+        top.append(self._banner(status))
 
+        main = []
         if session is None:
-            parts.append(self._login_card())
+            main.append(self._login_card())
         else:
             role = session.role
             if cabinet.dispensing.busy():
-                parts.append(self._active_card())
+                main.append(self._active_card())
             else:
                 if cabinet.users.can(Action.DISPENSE):
-                    parts.append(self._dispense_card())
+                    main.append(self._dispense_card())
                 if cabinet.users.can(Action.RESTOCK):
-                    parts.append(self._restock_card())
-            parts.append(self._drawers_card(status))
-            parts.append(self._faults_card(status, role))
+                    main.append(self._restock_card())
+            main.append(self._drawers_card(status))
+            main.append(self._faults_card(status, role))
             if cabinet.users.can(Action.ENTER_MAINTENANCE) or \
                     cabinet.users.can(Action.EXIT_MAINTENANCE):
-                parts.append(self._maintenance_card(status))
+                main.append(self._maintenance_card(status))
             if cabinet.users.can(Action.VIEW_LOG):
-                parts.append(self._log_card())
+                main.append(self._log_card())
 
-        return "\n".join(parts)
+        # the fault monitor is always visible, logged in or not - a fault is
+        # a safety fact about the cabinet, not something tied to one session
+        side = [self._fault_monitor_card()]
+
+        return ("\n".join(top) +
+               '<div class="cols"><div class="colmain">' + "\n".join(main) +
+               '</div><div class="colside">' + "\n".join(side) + '</div></div>')
+
+    def _fault_monitor_card(self):
+        """Every fault ever raised, cleared or acknowledged (FR-FD-05),
+        oldest first in the log but shown newest first here, in a box that
+        scrolls instead of truncating - nothing drops off because the
+        cabinet has seen a lot of faults."""
+        kinds = {"FAULT_RAISED", "FAULT_CLEARED", "ALARM_ACKNOWLEDGED"}
+        rows = []
+        for entry in reversed(self._cabinet.log.read()):
+            if entry.event_type not in kinds:
+                continue
+            where = (" drawer %s" % entry.details.get("drawer")
+                    if entry.details.get("drawer") is not None else "")
+            detail = entry.details.get("fault", "")
+            note = entry.details.get("detail", "")
+            line = "#%s %s%s" % (entry.sequence, entry.event_type, where)
+            if detail:
+                line += " - %s" % detail
+            if note:
+                line += " (%s)" % note
+            cls = "crit" if entry.event_type == "FAULT_RAISED" else ""
+            rows.append('<div class="%s">%s</div>' % (cls, _esc(line)))
+        body = "".join(rows) or '<p class="hint">No faults yet.</p>'
+        return '<div class="card"><h2>Fault monitor</h2><div class="scroll">%s</div></div>' % body
 
     def _topbar(self, status, session):
         who = "%s (%s)" % (session.user_id, session.role.value) if session else "nobody"

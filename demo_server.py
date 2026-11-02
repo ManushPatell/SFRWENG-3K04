@@ -35,7 +35,13 @@ body { margin: 0; background: #fff; color: #1a1a1a;
 .note { padding: 10px 16px; margin: 0; background: #eef6f0; color: #0f6b3f;
         border-bottom: 1px solid #c9c9c9; }
 .note.bad { background: #fbe9ea; color: #b00020; }
-.wrap { padding: 16px; max-width: 980px; }
+.wrap { padding: 16px; max-width: 1320px; }
+.cols { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.colmain { flex: 999 1 620px; min-width: 0; }
+.colside { flex: 1 1 320px; min-width: 0; position: sticky; top: 16px; }
+.scroll { max-height: 70vh; overflow-y: auto; font: 12px ui-monospace, Consolas, monospace; }
+.scroll div { padding: 3px 0; border-bottom: 1px solid #f0f0f0; }
+.scroll .crit { color: #b00020; }
 .card { border: 1px solid #c9c9c9; margin-bottom: 14px; background: #fff; }
 .card > :not(h2):not(table) { margin: 10px; }
 .card h2 { font-size: 13px; letter-spacing: .04em; text-transform: uppercase;
