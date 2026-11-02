@@ -1,0 +1,11 @@
+# The cabinet is pure-stdlib Python. Netlify only serves static files, so
+# web/index.html runs the same modules in the browser with Pyodide.
+[build]
+  command = "rm -rf dist && mkdir -p dist && cp web/* *.py dist/"
+  publish = "dist"
+
+[[headers]]
+  for = "/*.py"
+  [headers.values]
+    Content-Type = "text/plain; charset=utf-8"
+    Cache-Control = "no-cache"
