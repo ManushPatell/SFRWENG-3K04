@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from hms.service import HMS
+from hms.simulator import Simulator
 from hms.storage import Store
 from hms.inventory import classify
 
@@ -149,6 +150,62 @@ class CoreTests(unittest.TestCase):
         self.verify("A")
         self.assertFalse(self.active("communication"))
         self.assertIsNone(self.h.state["cabinets"]["A"]["health_at"])
+
+    def test_simulator_wrong_answer_ps01_blocks_and_recovers(self):
+        simulator = Simulator(self.h)
+
+        # First verify both simulated cabinets through the normal challenge path.
+        self.h.tick()
+        simulator.tick()
+        self.assertTrue(self.h.comm.verified("ADC-01"))
+        self.assertTrue(self.h.comm.verified("ADC-02"))
+
+        simulator.control("ADC-01", "wrong_answer", {"value": True})
+        self.time += self.h.config.heartbeat_interval
+        self.h.tick()
+        simulator.tick()
+
+        self.assertEqual(
+            self.h.state["cabinets"]["ADC-01"]["communication"], "error"
+        )
+        self.assertTrue(self.h.comm.verified("ADC-02"))
+        communication_alarms = [
+            alarm
+            for alarm in self.active("communication")
+            if alarm["cabinet_id"] == "ADC-01"
+        ]
+        self.assertEqual(len(communication_alarms), 1)
+        self.assertIn("Incorrect heartbeat answer", communication_alarms[0]["message"])
+
+        token = self.h.login("administrator", "DemoOnly!2026")
+        with self.assertRaisesRegex(ValueError, "unverified or unavailable"):
+            self.h.action(
+                token,
+                "threshold",
+                {"location": "ADC-01|D1|P1", "threshold": 25},
+            )
+
+        simulator.control("ADC-01", "wrong_answer", {"value": False})
+        self.time += self.h.config.heartbeat_interval
+        self.h.tick()
+        simulator.tick()
+
+        self.assertEqual(
+            self.h.state["cabinets"]["ADC-01"]["communication"], "available"
+        )
+        self.assertTrue(self.h.comm.verified("ADC-01"))
+        self.assertFalse(
+            [
+                alarm
+                for alarm in self.active("communication")
+                if alarm["cabinet_id"] == "ADC-01"
+            ]
+        )
+        self.h.action(
+            token,
+            "threshold",
+            {"location": "ADC-01|D1|P1", "threshold": 25},
+        )
 
     def test_timeout(self):
         self.h.tick()

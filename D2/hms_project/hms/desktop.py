@@ -831,6 +831,11 @@ class HMSWindow(QMainWindow):
         self.simulator_operation = QComboBox()
         self.simulator_operation.addItems(
             [
+                "online",
+                "wrong_answer",
+                "freeze",
+                "fault",
+                "unsafe",
                 "dispense",
                 "restock",
                 "maintenance",
@@ -841,9 +846,19 @@ class HMSWindow(QMainWindow):
         self.simulator_quantity = QSpinBox()
         self.simulator_quantity.setRange(1, 1000000)
         self.simulator_quantity.setValue(10)
+        self.simulator_quantity_label = QLabel("Quantity")
+        self.simulator_value = QComboBox()
+        self.simulator_value.addItem("Enable / True", True)
+        self.simulator_value.addItem("Disable / False", False)
+        self.simulator_value_label = QLabel("Value")
         form.addRow("Cabinet", self.simulator_cabinet)
         form.addRow("Event", self.simulator_operation)
-        form.addRow("Quantity", self.simulator_quantity)
+        form.addRow(self.simulator_quantity_label, self.simulator_quantity)
+        form.addRow(self.simulator_value_label, self.simulator_value)
+        self.simulator_operation.currentTextChanged.connect(
+            self.update_simulator_controls
+        )
+        self.update_simulator_controls(self.simulator_operation.currentText())
 
         button = QPushButton("Inject event")
         button.clicked.connect(self.inject_simulator_event)
@@ -852,16 +867,46 @@ class HMSWindow(QMainWindow):
 
         self.tabs.addTab(self.simulator_tab, "Simulator")
 
+    def update_simulator_controls(self, operation):
+        """Show the Boolean or quantity control required by the selected event."""
+
+        boolean_events = {"online", "wrong_answer", "freeze", "fault", "unsafe"}
+        quantity_events = {"dispense", "restock"}
+        is_boolean = operation in boolean_events
+        is_quantity = operation in quantity_events
+        self.simulator_value_label.setVisible(is_boolean)
+        self.simulator_value.setVisible(is_boolean)
+        self.simulator_quantity_label.setVisible(is_quantity)
+        self.simulator_quantity.setVisible(is_quantity)
+
+        if is_boolean:
+            self.simulator_value_label.setText(
+                {
+                    "online": "ADC connectivity",
+                    "wrong_answer": "Heartbeat answers",
+                    "freeze": "Health/inventory updates",
+                    "fault": "Hardware fault",
+                    "unsafe": "Unsafe condition",
+                }[operation]
+            )
+
     def inject_simulator_event(self):
         if not self.simulator:
             self.show_error("The simulator is disabled for this run.")
             return
 
+        operation = self.simulator_operation.currentText()
+        boolean_events = {"online", "wrong_answer", "freeze", "fault", "unsafe"}
+        data = (
+            {"value": self.simulator_value.currentData()}
+            if operation in boolean_events
+            else {"quantity": self.simulator_quantity.value()}
+        )
         try:
             self.simulator.control(
                 self.simulator_cabinet.currentText(),
-                self.simulator_operation.currentText(),
-                {"quantity": self.simulator_quantity.value()},
+                operation,
+                data,
             )
             self.refresh()
         except (ValueError, KeyError, PermissionError, TypeError) as exc:
