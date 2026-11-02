@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADC - Deliverable 2</title>
+<style>
+  #boot { font: 15px/1.5 system-ui, "Segoe UI", sans-serif; padding: 40px 16px; color: #333; }
+  #boot.bad { color: #b00020; }
+</style>
+</head>
+<body>
+<div id="boot">Loading the cabinet (starting Python in your browser)&hellip;</div>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+<script>
+// Hosting shim only. The local build is `python3 run.py`: a Python HTTP server
+// that turns each form POST into Demo.do()/Demo.simulate() and re-renders.
+// Netlify serves static files, so this page runs those same Python modules in
+// the browser through Pyodide and sends each form submit to them directly.
+// None of the product modules change.
+const MODULES = ["shared", "hardware", "storage", "log", "link", "users",
+  "inventory", "modes", "dispensing", "screen", "cabinet",
+  "demo_monitoring", "demo_server"];
+const TICK_MS = 250;
+
+const boot = document.getElementById("boot");
+const app = document.getElementById("app");
+
+async function main() {
+  const py = await loadPyodide();
+  const bust = "?v=" + Date.now();
+  await Promise.all(MODULES.map(async (m) => {
+    const res = await fetch(m + ".py" + bust);
+    if (!res.ok) throw new Error("could not load " + m + ".py");
+    py.FS.writeFile(m + ".py", await res.text());
+  }));
+  py.runPython(`
+import sys
+sys.path.insert(0, ".")
+from demo_server import Demo, render_page
+demo = Demo()
+
+def web_render(message="", ok=True):
+    return render_page(demo.page(message, ok))
+
+def web_post(path, values):
+    if path.startswith("/action/"):
+        r = demo.do(path[len("/action/"):], values)
+        return web_render(r.get("message", ""), r.get("ok", False))
+    if path.startswith("/sim/"):
+        demo.simulate(path[len("/sim/"):], values)
+        return web_render("", True)
+    return web_render("Unknown action.", False)
+
+def web_tick():
+    try:
+        demo.cabinet.tick()
+    except Exception as e:
+        print("tick error:", type(e).__name__, e)
+`);
+  const render = py.globals.get("web_render");
+  const post = py.globals.get("web_post");
+  const tick = py.globals.get("web_tick");
+
+  function show(html) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    document.title = doc.title;
+    const style = doc.querySelector("style");
+    let mine = document.getElementById("pystyle");
+    if (!mine) { mine = document.createElement("style"); mine.id = "pystyle"; document.head.appendChild(mine); }
+    if (style) mine.textContent = style.textContent;
+    app.innerHTML = doc.body.innerHTML;
+  }
+
+  app.addEventListener("submit", (ev) => {
+    const form = ev.target;
+    ev.preventDefault();
+    const values = Object.fromEntries(new FormData(form).entries());
+    const path = new URL(form.getAttribute("action"), location.href).pathname;
+    const pyValues = py.toPy(values);
+    try { show(post(path, pyValues)); }
+    catch (e) { console.error(e); alert("Error: " + e.message); }
+    finally { pyValues.destroy(); }
+  });
+
+  // Same background tick the Python server's thread runs.
+  setInterval(() => tick(), TICK_MS);
+
+  boot.remove();
+  show(render("", true));
+}
+
+main().catch((e) => {
+  console.error(e);
+  boot.className = "bad";
+  boot.textContent = "Could not start the cabinet: " + e.message;
+});
+</script>
+</body>
+</html>
