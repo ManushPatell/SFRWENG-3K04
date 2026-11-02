@@ -37,7 +37,7 @@ class Inventory:
         self._catalogue[medication.medication_id] = medication
 
     def medication(self, medication_id):
-        return self._catalogue.get(medication_id)
+        return self._catalogue.get(medication_id) #returns what places
 
     # --- setting drawers up --------------------------------------------------
 

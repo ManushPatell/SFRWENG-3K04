@@ -142,6 +142,10 @@ class Demo:
                 hw.advance(float(values.get("seconds", 10)))
             elif what == "link":
                 self.monitoring.set_reachable(not self.monitoring.is_reachable())
+            # force one tick now rather than waiting up to TICK_SECONDS for
+            # the background loop: otherwise the page can reload and show
+            # stale state before the loop has noticed what just changed
+            self.cabinet.tick()
             return True
 
     def page(self, message="", ok=True):
