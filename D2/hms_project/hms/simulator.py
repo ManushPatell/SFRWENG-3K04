@@ -71,6 +71,7 @@ class Simulator:
         """Answer heartbeats, publish reports, and accept queued commands."""
 
         with self.service.lock:
+            state_changed = False
             for cid, dev in self.devices.items():
                 if not dev["online"]:
                     continue
@@ -84,8 +85,10 @@ class Simulator:
                             + pending["b"]
                             + (1 if dev["wrong_answer"] else 0),
                         )
+                        state_changed = True
                     except ValueError:
-                        pass
+                        # A bad answer updates communication status and alarm state.
+                        state_changed = True
                 if not dev["freeze"] and self.service.now() - dev["last_publish"] >= 3:
                     health = dict(
                         power="ok",
@@ -112,7 +115,9 @@ class Simulator:
                         self.service.audit(
                             "command_acknowledgement", cid, "simulator", command
                         )
-            self.service.save()
+                        state_changed = True
+            if state_changed:
+                self.service.save()
 
     def control(self, cid, operation, data):
         """Apply one demonstration control such as fault, freeze, dispense, or restock."""

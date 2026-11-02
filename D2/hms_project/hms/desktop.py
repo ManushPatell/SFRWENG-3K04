@@ -8,7 +8,7 @@ import csv
 import json
 from datetime import datetime
 
-from PyQt5.QtCore import QDateTime, QTimer, Qt
+from PyQt5.QtCore import QDateTime, QObject, QThread, QTimer, Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QAbstractItemView,
@@ -176,6 +176,47 @@ def item(value):
     return QTableWidgetItem("Unavailable" if value is None else str(value))
 
 
+class MonitoringWorker(QObject):
+    """Run monitoring, simulation, and snapshots outside the UI event loop."""
+
+    snapshot_ready = pyqtSignal(object)
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, service, simulator, token):
+        super().__init__()
+        self.service = service
+        self.simulator = simulator
+        self.token = token
+        self._timer = None
+        self._last_snapshot = 0.0
+        self._last_error = None
+
+    @pyqtSlot()
+    def start(self):
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self.advance)
+        interval_ms = max(1, int(self.service.config.tick_seconds * 1000))
+        self._timer.start(interval_ms)
+        self.advance()
+
+    @pyqtSlot()
+    def advance(self):
+        try:
+            self.service.tick()
+            if self.simulator:
+                self.simulator.tick()
+            self._last_error = None
+            now = self.service.now()
+            if now - self._last_snapshot >= 1:
+                self._last_snapshot = now
+                self.snapshot_ready.emit(self.service.snapshot(self.token))
+        except (ValueError, KeyError, TypeError, PermissionError) as exc:
+            message = str(exc)
+            if message != self._last_error:
+                self.error_occurred.emit(message)
+                self._last_error = message
+
+
 class LoginDialog(QDialog):
     """Collect a local demo user's credentials before opening the dashboard."""
 
@@ -249,13 +290,24 @@ class HMSWindow(QMainWindow):
         self.build_schedule_tab()
         self.build_simulator_tab()
 
-        self.refresh_timer = QTimer(self)
-        self.refresh_timer.timeout.connect(self.refresh)
-        self.refresh_timer.start(1000)
+        self.worker_thread = None
+        self.monitoring_worker = None
 
-        self.application_timer = QTimer(self)
-        self.application_timer.timeout.connect(self.tick_application)
-        self.application_timer.start(int(self.service.config.tick_seconds * 1000))
+        self.tab_refresh_timer = QTimer(self)
+        self.tab_refresh_timer.setSingleShot(True)
+        self.tab_refresh_timer.setInterval(150)
+        self.tab_refresh_timer.timeout.connect(self.render_current_tab)
+        self.tabs.currentChanged.connect(
+            lambda _index: self.tab_refresh_timer.start()
+        )
+
+    def closeEvent(self, event):
+        """Stop the monitoring thread cleanly before closing the window."""
+
+        if self.worker_thread and self.worker_thread.isRunning():
+            self.worker_thread.quit()
+            self.worker_thread.wait()
+        event.accept()
 
     # ---------- Common window helpers ----------
 
@@ -566,7 +618,23 @@ class HMSWindow(QMainWindow):
 
         self.report_period = QLabel()
         self.events_table = QTableWidget()
+        self.history_page = 0
+        self.history_page_size = 100
+        self.history_page_label = QLabel("Generate a report to view recorded events.")
+        self.previous_history_page = QPushButton("Previous page")
+        self.next_history_page = QPushButton("Next page")
+        self.previous_history_page.clicked.connect(
+            lambda: self.change_history_page(-1)
+        )
+        self.next_history_page.clicked.connect(lambda: self.change_history_page(1))
+        paging = QHBoxLayout()
+        paging.addWidget(self.previous_history_page)
+        paging.addWidget(self.history_page_label, 1)
+        paging.addWidget(self.next_history_page)
+        self.previous_history_page.setEnabled(False)
+        self.next_history_page.setEnabled(False)
         layout.addWidget(self.report_period)
+        layout.addLayout(paging)
         layout.addWidget(self.events_table)
 
         reconstruction_form = QFormLayout()
@@ -602,24 +670,53 @@ class HMSWindow(QMainWindow):
                 f"{format_time(self.last_history['end'])} UTC; "
                 f"{len(self.last_history['events'])} events"
             )
-            rows = []
-            for event in reversed(self.last_history["events"]):
-                rows.append(
-                    (
-                        format_time(event["received_at"]),
-                        event["kind"],
-                        event["cabinet_id"] or "System",
-                        event["actor"],
-                        json.dumps(event["details"], sort_keys=True),
-                    )
-                )
-            self.set_table(
-                self.events_table,
-                ["Received", "Kind", "Cabinet", "Actor", "Details"],
-                rows,
-            )
+            self.history_page = 0
+            self.render_history_page()
         except (ValueError, KeyError, PermissionError, TypeError) as exc:
             self.show_error(str(exc))
+
+    def change_history_page(self, offset):
+        """Move through a report without rendering the full event history at once."""
+
+        if not self.last_history:
+            return
+        event_count = len(self.last_history["events"])
+        page_count = max(
+            1, (event_count + self.history_page_size - 1) // self.history_page_size
+        )
+        self.history_page = min(max(0, self.history_page + offset), page_count - 1)
+        self.render_history_page()
+
+    def render_history_page(self):
+        """Render only the selected page while retaining the complete report data."""
+
+        events = list(reversed(self.last_history["events"]))
+        total = len(events)
+        start = self.history_page * self.history_page_size
+        page_events = events[start : start + self.history_page_size]
+        rows = [
+            (
+                format_time(event["received_at"]),
+                event["kind"],
+                event["cabinet_id"] or "System",
+                event["actor"],
+                json.dumps(event["details"], sort_keys=True),
+            )
+            for event in page_events
+        ]
+        self.set_table(
+            self.events_table,
+            ["Received", "Kind", "Cabinet", "Actor", "Details"],
+            rows,
+        )
+        if total:
+            self.history_page_label.setText(
+                f"Showing {start + 1}–{start + len(page_events)} of {total} events"
+            )
+        else:
+            self.history_page_label.setText("No events in this report.")
+        self.previous_history_page.setEnabled(self.history_page > 0)
+        self.next_history_page.setEnabled(start + self.history_page_size < total)
 
     def save_history_csv(self):
         if not self.last_history:
@@ -777,15 +874,33 @@ class HMSWindow(QMainWindow):
             return
 
         try:
-            self.current_state = self.service.snapshot(self.token)
-            self.update_combos()
-            self.refresh_overview()
-            self.refresh_inventory_table()
-            self.refresh_alarm_table()
-            self.refresh_schedules()
-            self.refresh_simulator()
+            self.apply_snapshot(self.service.snapshot(self.token))
         except PermissionError as exc:
             self.show_error(str(exc))
+
+    def apply_snapshot(self, state):
+        """Accept background state on the UI thread and update the active page."""
+
+        self.current_state = state
+        self.update_combos()
+        self.render_current_tab()
+
+    def render_current_tab(self):
+        """Render the selected page from the latest cached HMS snapshot."""
+
+        if not self.current_state:
+            return
+        active_tab = self.tabs.currentWidget()
+        if active_tab is self.overview:
+            self.refresh_overview()
+        elif active_tab is self.inventory:
+            self.refresh_inventory_table()
+        elif active_tab is self.alarms_tab:
+            self.refresh_alarm_table()
+        elif active_tab is self.schedule_tab:
+            self.refresh_schedules()
+        elif active_tab is self.simulator_tab:
+            self.refresh_simulator()
 
     def tick_application(self):
         """Advance monitoring and simulator time inside the Qt event loop."""
@@ -798,10 +913,13 @@ class HMSWindow(QMainWindow):
             self.show_error(str(exc))
 
     def update_combo(self, combo, values):
+        values = [str(value) for value in values]
+        if [combo.itemText(index) for index in range(combo.count())] == values:
+            return
         old_value = combo.currentText()
         combo.blockSignals(True)
         combo.clear()
-        combo.addItems([str(value) for value in values])
+        combo.addItems(values)
         index = combo.findText(old_value)
         if index >= 0:
             combo.setCurrentIndex(index)
@@ -969,30 +1087,72 @@ class HMSWindow(QMainWindow):
 
     def refresh_simulator(self):
         if not self.simulator:
-            self.simulator_status.setPlainText("Simulator controls are disabled.")
+            status_text = "Simulator controls are disabled."
+            if self.simulator_status.toPlainText() != status_text:
+                self.simulator_status.setPlainText(status_text)
             return
 
         status = self.simulator.status()
-        self.simulator_status.setPlainText(json.dumps(status, indent=2))
+        status_text = json.dumps(status, indent=2)
+        if self.simulator_status.toPlainText() != status_text:
+            self.simulator_status.setPlainText(status_text)
 
     def set_table(self, table, headers, rows):
         """Replace a table's contents while keeping the table configuration consistent."""
 
-        table.clear()
-        table.setColumnCount(len(headers))
-        table.setHorizontalHeaderLabels(headers)
-        table.setRowCount(len(rows))
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setAlternatingRowColors(True)
-        table.setWordWrap(True)
-        table.setTextElideMode(Qt.ElideRight)
+        headers = [str(value) for value in headers]
+        rows = [
+            ["Unavailable" if value is None else str(value) for value in row]
+            for row in rows
+        ]
+        schema_changed = table.columnCount() != len(headers) or [
+            table.horizontalHeaderItem(column).text()
+            if table.horizontalHeaderItem(column)
+            else None
+            for column in range(table.columnCount())
+        ] != headers
+        row_count_changed = table.rowCount() != len(rows)
 
-        for row_number, row in enumerate(rows):
-            for column_number, value in enumerate(row):
-                table.setItem(row_number, column_number, item(value))
+        if not schema_changed and not row_count_changed:
+            if all(
+                table.item(row_number, column_number) is not None
+                and table.item(row_number, column_number).text() == value
+                for row_number, row in enumerate(rows)
+                for column_number, value in enumerate(row)
+            ):
+                return
 
-        self.configure_table(table)
+        changed_rows = set()
+        table.setUpdatesEnabled(False)
+        try:
+            if schema_changed:
+                table.setColumnCount(len(headers))
+                table.setHorizontalHeaderLabels(headers)
+                table.setEditTriggers(QTableWidget.NoEditTriggers)
+                table.setSelectionBehavior(QTableWidget.SelectRows)
+                table.setAlternatingRowColors(True)
+                table.setWordWrap(True)
+                table.setTextElideMode(Qt.ElideRight)
+            if row_count_changed:
+                table.setRowCount(len(rows))
+
+            for row_number, row in enumerate(rows):
+                for column_number, value in enumerate(row):
+                    cell = table.item(row_number, column_number)
+                    if cell is None:
+                        table.setItem(row_number, column_number, item(value))
+                        changed_rows.add(row_number)
+                    elif cell.text() != value:
+                        cell.setText(value)
+                        changed_rows.add(row_number)
+        finally:
+            table.setUpdatesEnabled(True)
+
+        if schema_changed:
+            self.configure_table(table)
+        else:
+            for row_number in changed_rows:
+                table.resizeRowToContents(row_number)
 
     def configure_table(self, table):
         """Apply consistent sizing rules that keep dense tables readable."""
@@ -1043,4 +1203,17 @@ def run_desktop(service, simulator=None):
     window.token = token
     window.show()
     window.refresh()
+
+    worker_thread = QThread(window)
+    worker = MonitoringWorker(service, simulator, token)
+    worker.moveToThread(worker_thread)
+    worker_thread.started.connect(worker.start)
+    worker.snapshot_ready.connect(window.apply_snapshot)
+    worker.error_occurred.connect(
+        lambda message: window.statusBar().showMessage(message, 5000)
+    )
+    worker_thread.finished.connect(worker.deleteLater)
+    window.worker_thread = worker_thread
+    window.monitoring_worker = worker
+    worker_thread.start()
     return application.exec_()

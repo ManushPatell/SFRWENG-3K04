@@ -156,8 +156,8 @@ class HMS:
         """Advance communication policy and persist any resulting alarms."""
 
         with self.lock:
-            self.comm.tick()
-            self.save()
+            if self.comm.tick():
+                self.save()
 
     def receive(self, envelope):
         """Validate before mutation; persist accepted event and effects together."""

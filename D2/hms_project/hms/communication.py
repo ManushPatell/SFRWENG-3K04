@@ -27,6 +27,10 @@ class Communication:
         """Send due challenges, detect missed responses, and raise stale alarms."""
 
         now = self.now()
+        previous_status = {
+            cid: cabinet["communication"] for cid, cabinet in self.cabinets.items()
+        }
+        previous_alarm_count = len(self.alarms.state["alarms"])
         for cid, cabinet in self.cabinets.items():
             pending = self.pending.get(cid)
             if pending and now >= pending["deadline"]:
@@ -52,6 +56,13 @@ class Communication:
                         f"{category}: missing or stale update",
                         "warning",
                     )
+        return (
+            previous_alarm_count != len(self.alarms.state["alarms"])
+            or any(
+                previous_status[cid] != cabinet["communication"]
+                for cid, cabinet in self.cabinets.items()
+            )
+        )
 
     def fail(self, cid, reason):
         """Mark a cabinet unavailable and record the communication failure."""
