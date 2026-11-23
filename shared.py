@@ -27,7 +27,7 @@ class Role(str, Enum):
     PHARMACY_TECH = "Pharmacy Technician"
     PHARMACIST = "Pharmacist"
     MAINTENANCE = "Maintenance Technician"
-
+    MANUSH = "Manush"
 
 class Mode(str, Enum):
     """FR-OPM-01. STARTUP is held while the self-test runs. The transition

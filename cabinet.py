@@ -163,7 +163,8 @@ def load_demo_data(cabinet, monitoring=None):
     people = [("N001", "1111", Role.NURSE),
               ("T001", "2222", Role.PHARMACY_TECH),
               ("P001", "3333", Role.PHARMACIST),
-              ("M001", "5555", Role.MAINTENANCE)]
+              ("M001", "5555", Role.MAINTENANCE),
+              ("MA01", "9090", Role.MANUSH)]
     for user_id, pin, role in people:
         cabinet.users.add_user(user_id, pin, role)
         if monitoring is not None:

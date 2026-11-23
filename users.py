@@ -24,6 +24,7 @@ PERMISSIONS = {
     Role.MAINTENANCE: {Action.CLEAR_FAULT, Action.ENTER_MAINTENANCE,
                        Action.EXIT_MAINTENANCE, Action.VIEW_LOG,
                        Action.ACK_ALARM, Action.VIEW_INVENTORY},
+    Role.MANUSH: {Action.VIEW_INVENTORY},
 }
 
 
